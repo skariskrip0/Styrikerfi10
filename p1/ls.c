@@ -102,7 +102,6 @@ int list(const char* path, int recursive)
     struct dirent *entry;
     FileInfo *files = NULL;
     int file_count = 0;
-    int capacity = 0;
     
     // Open the directory
     if ((dir = opendir(path)) == NULL) {
