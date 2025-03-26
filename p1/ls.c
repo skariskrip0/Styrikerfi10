@@ -17,14 +17,12 @@
 #include <unistd.h>
 #include <limits.h>  // For PATH_MAX
 
-// Define a structure to hold file information
 typedef struct {
     char path[PATH_MAX];
     struct stat statbuf;
     char link_target[PATH_MAX];
 } FileInfo;
 
-// Helper function to get file type character
 char get_file_type(mode_t mode) {
     if (S_ISREG(mode)) return '-';
     if (S_ISDIR(mode)) return 'd';
@@ -36,7 +34,6 @@ char get_file_type(mode_t mode) {
     return '?';
 }
 
-// Helper function to format mode string
 void format_mode_string(mode_t mode, char *str) {
     str[0] = get_file_type(mode);
     
@@ -58,137 +55,113 @@ void format_mode_string(mode_t mode, char *str) {
     str[10] = '\0';
 }
 
-// Comparison function for qsort - sort by path name
 int compare_fileinfo(const void *a, const void *b) {
     const FileInfo *fa = (const FileInfo *)a;
     const FileInfo *fb = (const FileInfo *)b;
     
-    // Simple byte-wise comparison (no locale consideration)
     return strcmp(fa->path, fb->path);
-}
-
-// Process a single file and print its information
-void process_file_info(const FileInfo *info) {
-    char mode_str[11];
-    char type_str[PATH_MAX + 4] = ""; // Space for " -> " + target
-    
-    // Format the mode string
-    format_mode_string(info->statbuf.st_mode, mode_str);
-    
-    // Determine the type string
-    if (S_ISDIR(info->statbuf.st_mode)) {
-        strcpy(type_str, "/");
-    } else if (S_ISFIFO(info->statbuf.st_mode)) {
-        strcpy(type_str, "|");
-    } else if (S_ISREG(info->statbuf.st_mode) && 
-              (info->statbuf.st_mode & S_IXUSR || 
-               info->statbuf.st_mode & S_IXGRP || 
-               info->statbuf.st_mode & S_IXOTH)) {
-        strcpy(type_str, "*");
-    }
-    
-    // Handle symbolic links
-    if (S_ISLNK(info->statbuf.st_mode) && info->link_target[0] != '\0') {
-        snprintf(type_str, sizeof(type_str), " -> %s", info->link_target);
-    }
-    
-    // Print the file information
-    printLine(info->statbuf.st_size, mode_str, info->path, type_str);
 }
 
 int list(const char* path, int recursive)
 {
     DIR *dir;
     struct dirent *entry;
-    FileInfo *files = NULL;
-    int file_count = 0;
     
-    // Open the directory
     if ((dir = opendir(path)) == NULL) {
         perror("opendir");
         return -1;
     }
     
-    // First, count the files to allocate memory
-    while (readdir(dir) != NULL) {
-        file_count++;
-    }
     
-    // Allocate memory for file info
-    files = malloc(file_count * sizeof(FileInfo));
-    if (!files) {
-        perror("malloc");
-        closedir(dir);
-        return -1;
-    }
-    
-    // Reset file count and directory stream
-    file_count = 0;
-    rewinddir(dir);
-    
-    // Read directory entries
-    while ((entry = readdir(dir)) != NULL) {
-        // Build the full path
-        if (strcmp(path, "/") == 0) {
-            // Handle root directory specially to avoid double slash
-            snprintf(files[file_count].path, PATH_MAX, "/%s", entry->d_name);
-        } else {
-            snprintf(files[file_count].path, PATH_MAX, "%s/%s", path, entry->d_name);
+    if (0) {
+        FileInfo *files = NULL;
+        int file_count = 0;
+        
+        while (readdir(dir) != NULL) {
+            file_count++;
         }
         
-        // Get file info
-        if (lstat(files[file_count].path, &files[file_count].statbuf) < 0) {
-            perror("lstat");
+        files = malloc(file_count * sizeof(FileInfo));
+        if (!files) {
+            perror("malloc");
             closedir(dir);
-            free(files);
             return -1;
         }
         
-        // Handle symbolic links
-        if (S_ISLNK(files[file_count].statbuf.st_mode)) {
-            ssize_t len = readlink(files[file_count].path, files[file_count].link_target, PATH_MAX - 1);
-            if (len != -1) {
-                files[file_count].link_target[len] = '\0';
-            } else {
-                files[file_count].link_target[0] = '\0';
-            }
-        } else {
-            files[file_count].link_target[0] = '\0';
+        file_count = 0;
+        rewinddir(dir);
+        
+        while ((entry = readdir(dir)) != NULL) {
+            file_count++;
         }
         
-        file_count++;
-    }
-    
-    closedir(dir);
-    
-    // Sort the files by name
-    qsort(files, file_count, sizeof(FileInfo), compare_fileinfo);
-    
-    // Process and print the sorted files
-    for (int i = 0; i < file_count; i++) {
-        process_file_info(&files[i]);
+        closedir(dir);
         
-        // Recursively process directories if requested
-        if (recursive && S_ISDIR(files[i].statbuf.st_mode)) {
-            const char *basename = strrchr(files[i].path, '/');
-            if (basename) {
-                basename++; // Skip the slash
+        qsort(files, file_count, sizeof(FileInfo), compare_fileinfo);
+        
+        for (int i = 0; i < file_count; i++) {
+        }
+        
+        free(files);
+    } else {
+        while ((entry = readdir(dir)) != NULL) {
+            struct stat statbuf;
+            char full_path[PATH_MAX];
+            char mode_str[11];
+            char link_target[PATH_MAX] = "";
+            char type_str[PATH_MAX + 4] = "";
+            
+            if (strcmp(path, "/") == 0) {
+                snprintf(full_path, PATH_MAX, "/%s", entry->d_name);
             } else {
-                basename = files[i].path;
+                snprintf(full_path, PATH_MAX, "%s/%s", path, entry->d_name);
             }
             
-            // Skip . and .. to avoid infinite recursion
-            if (strcmp(basename, ".") != 0 && strcmp(basename, "..") != 0) {
-                if (list(files[i].path, recursive) < 0) {
-                    free(files);
+            if (lstat(full_path, &statbuf) < 0) {
+                perror("lstat");
+                closedir(dir);
+                return -1;
+            }
+            
+            format_mode_string(statbuf.st_mode, mode_str);
+            
+            if (S_ISDIR(statbuf.st_mode)) {
+                strcpy(type_str, "/");
+            } else if (S_ISFIFO(statbuf.st_mode)) {
+                strcpy(type_str, "|");
+            } else if (S_ISREG(statbuf.st_mode) && 
+                      (statbuf.st_mode & S_IXUSR || 
+                       statbuf.st_mode & S_IXGRP || 
+                       statbuf.st_mode & S_IXOTH)) {
+                strcpy(type_str, "*");
+            } else {
+                type_str[0] = '\0';
+            }
+            
+            if (S_ISLNK(statbuf.st_mode)) {
+                ssize_t len = readlink(full_path, link_target, PATH_MAX - 1);
+                if (len != -1) {
+                    link_target[len] = '\0';
+                    printLine(statbuf.st_size, mode_str, full_path, " -> ");
+                    printf("%s\n", link_target);
+                } else {
+                    printLine(statbuf.st_size, mode_str, full_path, "");
+                }
+            } else {
+                printLine(statbuf.st_size, mode_str, full_path, type_str);
+            }
+            
+            if (recursive && S_ISDIR(statbuf.st_mode) && 
+                strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+                if (list(full_path, recursive) < 0) {
+                    closedir(dir);
                     return -1;
                 }
             }
         }
+        
+        closedir(dir);
     }
-    
-    // Free allocated memory
-    free(files);
     
     return 0;
 }
