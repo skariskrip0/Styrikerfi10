@@ -142,8 +142,9 @@ int list(const char* path, int recursive)
                 ssize_t len = readlink(full_path, link_target, PATH_MAX - 1);
                 if (len != -1) {
                     link_target[len] = '\0';
-                    printLine(statbuf.st_size, mode_str, full_path, " -> ");
-                    printf("%s\n", link_target);
+                    char link_type_str[PATH_MAX + 5];
+                    snprintf(link_type_str, sizeof(link_type_str), "-> %s", link_target);
+                    printLine(statbuf.st_size, mode_str, full_path, link_type_str);
                 } else {
                     printLine(statbuf.st_size, mode_str, full_path, "");
                 }
